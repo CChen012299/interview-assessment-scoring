@@ -227,10 +227,11 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-SELECT id, student_id, assessment_id, section_scores, overall_percentage, passed
-FROM submissions WHERE student_id = $student_id";
+          SELECT id, student_id, assessment_id, section_scores, overall_percentage, passed
+          FROM submissions WHERE student_id = $student_id";
         cmd.Parameters.AddWithValue("$student_id", studentId);
 
         var submissions = new List<Submission>();
@@ -263,6 +264,100 @@ FROM submissions WHERE student_id = $student_id";
         while (reader.Read())
             classes.Add(new ClassSummary(reader.GetString(0), reader.GetString(1)));
         return classes;
+    }
+
+    public ClassPerformanceResponse? GetClassPerformanceReport(string classId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // get class details
+        using var cmdClass = new SqliteCommand("SELECT name, teacher_name FROM classes WHERE id = $classId", conn);
+        cmdClass.Parameters.AddWithValue("$classId", classId);
+
+        using var clsReader = cmdClass.ExecuteReader();
+        if (!clsReader.Read()) return null;
+        
+        var className = clsReader.GetString(0);
+        var teacherName = clsReader.GetString(1);
+        clsReader.Close();
+
+        // get assessment details
+        var assessmentIds = new List<string>();
+        using var cmdAssess = new SqliteCommand("SELECT id FROM assessments", conn);
+        using var assessReader = cmdAssess.ExecuteReader();
+        while (assessReader.Read())
+        {
+            assessmentIds.Add(assessReader.GetString(0));
+        }
+        assessReader.Close();
+
+        // get student details
+        var query = @"
+            SELECT 
+                s.id AS student_id, 
+                s.name AS student_name,
+                sub.id AS submission_id,
+                sub.assessment_id,
+                sub.overall_percentage,
+                sub.passed,
+                sub.section_scores
+            FROM students s
+            JOIN class_students cs ON s.id = cs.student_id
+            LEFT JOIN submissions sub ON s.id = sub.student_id
+            WHERE cs.class_id = $classId
+            ORDER BY s.name ASC;";
+
+        using var cmd = new SqliteCommand(query, conn);
+        cmd.Parameters.AddWithValue("$classId", classId);
+
+        var studentRecordsMap = new Dictionary<string, (string Name, Dictionary<string, Submission?> Assessments)>();
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var studentId = reader.GetString(0);
+            var studentName = reader.GetString(1);
+
+            if (!studentRecordsMap.ContainsKey(studentId))
+            {
+                // Pre-populate every known assessmentId with a null value as requested
+                var matrix = assessmentIds.ToDictionary(id => id, id => (Submission?)null);
+                studentRecordsMap[studentId] = (studentName, matrix);
+            }
+
+            // If a submission row exists, populate the exact Submission domain model
+            if (!reader.IsDBNull(2))
+            {
+                var submissionId = reader.GetString(2);
+                var assessmentId = reader.GetString(3);
+                double overallPercentage = reader.GetDouble(4);
+                bool passed = reader.GetInt32(5) == 1;
+                
+                var sectionScores = new List<SectionScore>();
+                if (!reader.IsDBNull(6))
+                {
+                    var rawJson = reader.GetString(6);
+                    sectionScores = JsonSerializer.Deserialize<List<SectionScore>>(rawJson) ?? new();
+                }
+
+                studentRecordsMap[studentId].Assessments[assessmentId] = new Submission(
+                    Id: submissionId,
+                    StudentId: studentId,
+                    AssessmentId: assessmentId,
+                    SectionScores: sectionScores,
+                    OverallPercentage: overallPercentage,
+                    Passed: passed
+                );
+            }
+        }
+
+        var studentList = studentRecordsMap.Select(kvp => new StudentPerformanceRecord(
+            Student: new StudentSummary(kvp.Key, kvp.Value.Name),
+            Assessments: kvp.Value.Assessments
+        )).ToList();
+
+        return new ClassPerformanceResponse(classId, className, teacherName, studentList);
     }
 
     public ClassRecord? GetClassWithStudents(string classId)

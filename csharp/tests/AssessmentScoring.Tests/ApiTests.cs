@@ -131,4 +131,76 @@ public class ApiTests : IClassFixture<TestWebAppFactory>
         Assert.NotNull(results);
         Assert.Single(results);
     }
+
+    [Fact]
+    public async Task GetClassPerformance_UnknownClass_Returns404()
+    {
+        // Act
+        var response = await _client.GetAsync("/classes/does-not-exist/performance");
+        
+        // Assert
+        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task GetClassPerformance_ReturnsCompleteAssessmentMatrix()
+    {
+        // Arrange: Ensure a submission exists for Alice ("stu-01") so we can test active scoring mapping
+        var submissionPayload = new
+        {
+            student_id = "stu-01",
+            answers = new Dictionary<string, string>
+            {
+                { "q-001", "author" },       // Correct
+                { "q-002", "wrong-choice" }, // Incorrect
+                { "q-003", "plot" },         // Correct
+                { "q-004", "main idea" },    // Correct
+                { "q-005", "inference" }     // Correct
+            }
+        };
+        
+        var seedResponse = await _client.PostAsJsonAsync("/assessments/assess-001/submit", submissionPayload);
+        Assert.Equal(HttpStatusCode.OK, seedResponse.StatusCode);
+
+        // Act: Request the comprehensive classroom analytics performance matrix
+        var response = await _client.GetAsync("/classes/class-001/performance");
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+
+        var data = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        // Assert: Root metadata validation (Using default camelCase serialization properties)
+        Assert.Equal("class-001", data.GetProperty("classId").GetString());
+        Assert.Equal("Room 12A", data.GetProperty("className").GetString());
+        Assert.Equal("Ms. Rivera", data.GetProperty("teacherName").GetString());
+
+        // Assert: Verify student collection properties
+        var students = data.GetProperty("students");
+        Assert.Equal(5, students.GetArrayLength()); // 5 total students registered in class seed
+
+        // Find Alice's record block
+        var aliceRecord = students.EnumerateArray().First(s => s.GetProperty("student").GetProperty("id").GetString() == "stu-01");
+        Assert.Equal("Alice", aliceRecord.GetProperty("student").GetProperty("name").GetString());
+
+        // Assert: Check the dictionary mapping matrix properties
+        var assessmentsMatrix = aliceRecord.GetProperty("assessments");
+        
+        // Test a taken assessment (Matches full Submission object signature in camelCase)
+        var readingTest = assessmentsMatrix.GetProperty("assess-001");
+        Assert.Equal(JsonValueKind.Object, readingTest.ValueKind);
+        Assert.Equal("stu-01", readingTest.GetProperty("studentId").GetString());
+        Assert.Equal("assess-001", readingTest.GetProperty("assessmentId").GetString());
+        Assert.True(readingTest.GetProperty("overallPercentage").GetDouble() > 0);
+        Assert.True(readingTest.GetProperty("passed").GetBoolean());
+
+        // Test a section score detail within the taken assessment
+        var sections = readingTest.GetProperty("sectionScores");
+        var vocabSection = sections.EnumerateArray().First(sec => sec.GetProperty("id").GetString() == "sec-001");
+        Assert.Equal("Vocabulary", vocabSection.GetProperty("name").GetString());
+        Assert.Equal(1, vocabSection.GetProperty("pointsEarned").GetInt32());
+        Assert.Equal(2, vocabSection.GetProperty("pointsPossible").GetInt32());
+
+        // Test an unsubmitted assessment (Must strictly serialize to a JSON null property key)
+        var mathTest = assessmentsMatrix.GetProperty("assess-002");
+        Assert.Equal(JsonValueKind.Null, mathTest.ValueKind);
+    }
 }

@@ -78,7 +78,7 @@ public class ScoringService
         ));
 
         // tally overall grade
-        percentageOverall += percentage * section.Weight ;
+        percentageOverall += percentage * section.Weight;
       }
 
       bool passedOverall = percentageOverall >= Config.MasteryThreshold && allSectionsPassed;
