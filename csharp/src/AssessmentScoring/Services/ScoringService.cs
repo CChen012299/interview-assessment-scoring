@@ -35,6 +35,53 @@ public class ScoringService
         Dictionary<string, string> submittedAnswers,
         List<AssessmentSection> sections)
     {
-        throw new NotImplementedException();
+      // returns
+      var sectionScores = new List<SectionScore>();
+      double percentageOverall = 0.0;
+      bool allSectionsPassed = true; 
+
+      foreach (AssessmentSection section in sections) // move content to helper function? 
+      {
+        // score per section
+        int score = 0;
+
+        foreach (var question in section.Questions)
+        {
+          string id = question.Key;
+          string answer = question.Value;
+
+          // did the student answer and did they get it right
+          if (submittedAnswers.TryGetValue(id, out string? submittedAnswer) && answer == submittedAnswer)
+          {
+            score++; 
+          }
+          
+        }
+
+        // calculate percentage correct and if student passed
+        double percentage = (double)score / section.Questions.Count;
+        bool passed = percentage >= Config.MasteryThreshold;
+
+        if (!passed)
+        {
+          allSectionsPassed = false; 
+        }
+        
+        // add official section score
+        sectionScores.Add(new SectionScore(
+          section.Id,
+          section.Name,
+          score,
+          section.Questions.Count,
+          percentage,
+          passed
+        ));
+
+        // tally overall grade
+        percentageOverall += percentage * section.Weight ;
+      }
+
+      bool passedOverall = percentageOverall >= Config.MasteryThreshold && allSectionsPassed;
+      return new ScoreResult(sectionScores, percentageOverall, passedOverall); 
     }
 }
