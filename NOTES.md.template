@@ -1,10 +1,25 @@
 # Notes
 
+Hi!
+
+
 ## How the service works
 <!-- Describe the end-to-end flow in your own words: what happens from HTTP request to stored result -->
 
+- A Student submits an answer set from the "frontend", and the client sends a POST call to the server. `/assessments/{assessmentId}/submit` containing a body of raw JSON, with student ID and question answers. 
+- .NET maps the URL to the endpoint
+- Maps to the submit function call, which injects the service and database
+- Controller asks databse if the assessment ID exists, and saves the submission, returning the submission as 200 OK. 
+
+so,. http request -> conntroller -> service & database
+
 ## Scoring function
 <!-- How did you approach implementing calculate_score? Any edge cases that gave you pause? -->
+- I chose to use a nested for loop to iterate through the assessment sections and corresponding questions. Tallying score, overall percentage, and section grade iteratively like you might in real life when 
+grading a test. 
+- There are certain edge cases not included in the tests that i did consider: 
+  - What if there is no answer included for a question
+  - What if a section contains no questions? 
 
 ## Class results feature
 <!-- What did you build? Why did you structure it the way you did?
@@ -12,7 +27,17 @@
 
 ## Tradeoffs and what I'd do next
 <!-- What tradeoffs did you make? What would you tackle with more time? -->
+- I would reassess the scoring function. A nested loop is O(n^2) and would suffer in performance with hundred question tests with thousands of students. 
 
 ## Working with AI
-<!-- How did you use AI tools? What did you prompt, what came back, what did you change and why?
-     Think of this as a reflection on the collaboration, not a log. -->
+- Started with exploring the project architecture. Asked Gemni questions about the codebase
+- Troubleshooting all tests failed after implementing the ScoringService, still throwing NotImplementedException
+  - This gave me input saying I need to rebuild the image, which I suspected and have already tried, yet when i tried it again it worked lol
+  - All tests pass but one! Back to it. I'll pair program with AI to debug this. 
+    - I can see in the test log that the AssessmentScoring.Tests.ScoringTests.WeightsAppliedCorrectly_ToOverallPercentage fails.
+      percentage is off due to rounding error, probably due to type difference, so I ask AI to suggest some fixes. 
+      - casting score to double fixes our issue: 
+        `double percentage = (double)score / section.Questions.Count;`
+
+
+

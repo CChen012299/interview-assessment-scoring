@@ -166,7 +166,7 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
         return assessment;
     }
 
-    public string SaveSubmission(
+    public string SaveSubmission( // FIFO Queue
         string studentId,
         string assessmentId,
         List<SectionScore> sectionScores,
@@ -227,10 +227,11 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
+
         using var cmd = conn.CreateCommand();
         cmd.CommandText = @"
-SELECT id, student_id, assessment_id, section_scores, overall_percentage, passed
-FROM submissions WHERE student_id = $student_id";
+          SELECT id, student_id, assessment_id, section_scores, overall_percentage, passed
+          FROM submissions WHERE student_id = $student_id";
         cmd.Parameters.AddWithValue("$student_id", studentId);
 
         var submissions = new List<Submission>();
@@ -263,6 +264,79 @@ FROM submissions WHERE student_id = $student_id";
         while (reader.Read())
             classes.Add(new ClassSummary(reader.GetString(0), reader.GetString(1)));
         return classes;
+    }
+
+    public List<StudentPerformanceRecord> GetClassPerformanceReport(string classId)
+    {
+        using var conn = new SqliteConnection(_connectionString);
+        conn.Open();
+
+        // retreive students and their submissions. filtered by classId
+        var query = @"
+            SELECT 
+                s.id AS student_id,
+                s.name AS student_name,
+                sub.id AS submission_id,
+                sub.assessment_id,
+                sub.overall_percentage,
+                sub.passed,
+                sub.section_scores
+            FROM students s
+            JOIN class_students cs ON s.id = cs.student_id
+            LEFT JOIN submissions sub ON s.id = sub.student_id
+            WHERE cs.class_id = $classId
+            ORDER BY s.name ASC;";
+
+        using var cmd = new SqliteCommand(query, conn);
+        cmd.Parameters.AddWithValue("$classId", classId);
+
+        // create list of assessments for each student
+        var studentMap = new Dictionary<string, (StudentSummary Student, Dictionary<string, Submission?> Assessments)>();
+
+        using var reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            var studentId = reader.GetString(0);
+            var studentName = reader.GetString(1);
+
+            // if student is not in our map, add them
+            if (!studentMap.TryGetValue(studentId, out var entry))
+            {
+                entry = (new StudentSummary(studentId, studentName), new Dictionary<string, Submission?>());
+                studentMap[studentId] = entry;
+            }
+
+            // if the student has submitted an assessment
+            if (!reader.IsDBNull(2)) 
+            {
+                // format data
+                var submissionId = reader.GetString(2);
+                var assessmentId = reader.GetString(3);
+                double overallPercentage = reader.GetDouble(4);
+                bool passed = reader.GetInt32(5) == 1;
+
+                // if there are scores, prepare them
+                List<SectionScore> sectionScores = new();
+                if (!reader.IsDBNull(6))
+                {
+                    sectionScores = JsonSerializer.Deserialize<List<SectionScore>>(reader.GetString(6)) ?? new();
+                }
+                
+                // add student submission to report
+                entry.Assessments[assessmentId] = new Submission(
+                    Id: submissionId,
+                    StudentId: studentId,
+                    AssessmentId: assessmentId,
+                    SectionScores: sectionScores,
+                    OverallPercentage: overallPercentage,
+                    Passed: passed
+                );
+            }
+        }
+
+        return studentMap.Values
+            .Select(v => new StudentPerformanceRecord(v.Student, v.Assessments))
+            .ToList();
     }
 
     public ClassRecord? GetClassWithStudents(string classId)

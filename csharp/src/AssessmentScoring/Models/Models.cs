@@ -33,6 +33,18 @@ public record Submission(
     double OverallPercentage,
     bool Passed);
 
+public record ClassPerformanceResponse(
+    string ClassId,
+    string ClassName,
+    string TeacherName,
+    List<StudentPerformanceRecord> Students
+);
+
+public record StudentPerformanceRecord(
+    StudentSummary Student,
+    Dictionary<string, Submission?> Assessments
+);
+
 public record StudentSummary(string Id, string Name);
 
 public record ClassSummary(string Id, string Name);

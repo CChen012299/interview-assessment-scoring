@@ -12,6 +12,7 @@ public static class AssessmentController
         app.MapGet("/students/{studentId}/scores", GetScores);
         app.MapGet("/classes", GetClasses);
         app.MapGet("/classes/{classId}", GetClass);
+        app.MapGet("/classes/{classId}/performance", GetClassPerformance);
         app.MapGet("/assessments", GetAssessments);
         app.MapGet("/assessments/{assessmentId}", GetAssessment);
     }
@@ -91,12 +92,24 @@ public static class AssessmentController
         return Results.Ok(db.GetClasses());
     }
 
+
     private static IResult GetClass(string classId, Database db)
     {
         var result = db.GetClassWithStudents(classId);
         if (result is null)
             return Results.Json(new { detail = "Class not found" }, statusCode: 404);
         return Results.Ok(result);
+    }
+
+    private static IResult GetClassPerformance(string classId, Database db)
+    {
+        var report = db.GetClassPerformanceReport(classId);
+        if (report is null)
+        {
+            return Results.Json(new { detail = "Class not found" }, statusCode: 404);
+        }
+
+        return Results.Ok(report);
     }
 
     private static IResult GetAssessments(Database db)
