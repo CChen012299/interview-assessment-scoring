@@ -166,7 +166,7 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
         return assessment;
     }
 
-    public string SaveSubmission(
+    public string SaveSubmission( // FIFO Queue
         string studentId,
         string assessmentId,
         List<SectionScore> sectionScores,
@@ -266,36 +266,15 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
         return classes;
     }
 
-    public ClassPerformanceResponse? GetClassPerformanceReport(string classId)
+    public List<StudentPerformanceRecord> GetClassPerformanceReport(string classId)
     {
         using var conn = new SqliteConnection(_connectionString);
         conn.Open();
 
-        // get class details
-        using var cmdClass = new SqliteCommand("SELECT name, teacher_name FROM classes WHERE id = $classId", conn);
-        cmdClass.Parameters.AddWithValue("$classId", classId);
-
-        using var clsReader = cmdClass.ExecuteReader();
-        if (!clsReader.Read()) return null;
-        
-        var className = clsReader.GetString(0);
-        var teacherName = clsReader.GetString(1);
-        clsReader.Close();
-
-        // get assessment details
-        var assessmentIds = new List<string>();
-        using var cmdAssess = new SqliteCommand("SELECT id FROM assessments", conn);
-        using var assessReader = cmdAssess.ExecuteReader();
-        while (assessReader.Read())
-        {
-            assessmentIds.Add(assessReader.GetString(0));
-        }
-        assessReader.Close();
-
-        // get student details
+        // retreive students and their submissions. filtered by classId
         var query = @"
             SELECT 
-                s.id AS student_id, 
+                s.id AS student_id,
                 s.name AS student_name,
                 sub.id AS submission_id,
                 sub.assessment_id,
@@ -311,7 +290,8 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
         using var cmd = new SqliteCommand(query, conn);
         cmd.Parameters.AddWithValue("$classId", classId);
 
-        var studentRecordsMap = new Dictionary<string, (string Name, Dictionary<string, Submission?> Assessments)>();
+        // create list of assessments for each student
+        var studentMap = new Dictionary<string, (StudentSummary Student, Dictionary<string, Submission?> Assessments)>();
 
         using var reader = cmd.ExecuteReader();
         while (reader.Read())
@@ -319,29 +299,31 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
             var studentId = reader.GetString(0);
             var studentName = reader.GetString(1);
 
-            if (!studentRecordsMap.ContainsKey(studentId))
+            // if student is not in our map, add them
+            if (!studentMap.TryGetValue(studentId, out var entry))
             {
-                // Pre-populate every known assessmentId with a null value as requested
-                var matrix = assessmentIds.ToDictionary(id => id, id => (Submission?)null);
-                studentRecordsMap[studentId] = (studentName, matrix);
+                entry = (new StudentSummary(studentId, studentName), new Dictionary<string, Submission?>());
+                studentMap[studentId] = entry;
             }
 
-            // If a submission row exists, populate the exact Submission domain model
-            if (!reader.IsDBNull(2))
+            // if the student has submitted an assessment
+            if (!reader.IsDBNull(2)) 
             {
+                // format data
                 var submissionId = reader.GetString(2);
                 var assessmentId = reader.GetString(3);
                 double overallPercentage = reader.GetDouble(4);
                 bool passed = reader.GetInt32(5) == 1;
-                
-                var sectionScores = new List<SectionScore>();
+
+                // if there are scores, prepare them
+                List<SectionScore> sectionScores = new();
                 if (!reader.IsDBNull(6))
                 {
-                    var rawJson = reader.GetString(6);
-                    sectionScores = JsonSerializer.Deserialize<List<SectionScore>>(rawJson) ?? new();
+                    sectionScores = JsonSerializer.Deserialize<List<SectionScore>>(reader.GetString(6)) ?? new();
                 }
-
-                studentRecordsMap[studentId].Assessments[assessmentId] = new Submission(
+                
+                // add student submission to report
+                entry.Assessments[assessmentId] = new Submission(
                     Id: submissionId,
                     StudentId: studentId,
                     AssessmentId: assessmentId,
@@ -352,12 +334,9 @@ INSERT OR IGNORE INTO submissions VALUES ('sub-010','student-009','assess-002','
             }
         }
 
-        var studentList = studentRecordsMap.Select(kvp => new StudentPerformanceRecord(
-            Student: new StudentSummary(kvp.Key, kvp.Value.Name),
-            Assessments: kvp.Value.Assessments
-        )).ToList();
-
-        return new ClassPerformanceResponse(classId, className, teacherName, studentList);
+        return studentMap.Values
+            .Select(v => new StudentPerformanceRecord(v.Student, v.Assessments))
+            .ToList();
     }
 
     public ClassRecord? GetClassWithStudents(string classId)
