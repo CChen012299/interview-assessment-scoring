@@ -123,6 +123,43 @@ def get_submissions_for_student(
     return SubmissionResponseList(responses=[_row_to_submission(row) for row in rows])
 
 
+def get_class_submissions_for_assessment(
+    class_id: str, assessment_id: str, db_path: str | Path = _DB_PATH
+) -> dict[str, SubmissionResponse]:
+    """Fetch the stored submissions of a class's students for one assessment.
+
+    Only students on the class roster are included: the JOIN on
+    ``class_students`` drops submissions from anyone else. Students who have
+    not submitted are simply absent from the result.
+
+    Args:
+        class_id: Class whose roster to use.
+        assessment_id: Assessment to fetch submissions for.
+        db_path: SQLite database file.
+
+    Returns:
+        Submissions keyed by student id. Empty if nobody in the class has
+        submitted (or the class or assessment does not exist).
+    """
+    with closing(_connect(db_path)) as conn:
+        # ORDER BY rowid only makes the result deterministic. save_submission
+        # keeps one row per student and assessment, but the schema does not
+        # enforce it; should duplicates exist, the dict below keeps the
+        # highest-rowid row, which may not be the one a later resubmission
+        # updates. The real fix is a UNIQUE index on (student_id, assessment_id).
+        rows = conn.execute(
+            "SELECT sub.id, sub.student_id, sub.assessment_id, sub.section_scores,"
+            " sub.overall_percentage, sub.passed"
+            " FROM submissions sub"
+            " JOIN class_students cs ON cs.student_id = sub.student_id"
+            " WHERE cs.class_id = ? AND sub.assessment_id = ?"
+            " ORDER BY sub.rowid",
+            (class_id, assessment_id),
+        ).fetchall()
+
+    return {row["student_id"]: _row_to_submission(row) for row in rows}
+
+
 def _row_to_submission(row: sqlite3.Row) -> SubmissionResponse:
     """Convert a ``submissions`` row into a SubmissionResponse.
 
