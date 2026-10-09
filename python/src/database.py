@@ -120,21 +120,29 @@ def get_submissions_for_student(
             (student_id,),
         ).fetchall()
 
-    return SubmissionResponseList(
-        responses=[
-            SubmissionResponse(
-                submission_id=row["id"],
-                student_id=row["student_id"],
-                assessment_id=row["assessment_id"],
-                section_scores=[
-                    SectionScoreResponse.model_validate(score)
-                    for score in json.loads(row["section_scores"])
-                ],
-                overall_percentage=row["overall_percentage"],
-                passed=bool(row["passed"]),
-            )
-            for row in rows
-        ]
+    return SubmissionResponseList(responses=[_row_to_submission(row) for row in rows])
+
+
+def _row_to_submission(row: sqlite3.Row) -> SubmissionResponse:
+    """Convert a ``submissions`` row into a SubmissionResponse.
+
+    Args:
+        row: A row with the columns id, student_id, assessment_id,
+            section_scores (JSON text), overall_percentage and passed (0/1).
+
+    Returns:
+        The parsed submission.
+    """
+    return SubmissionResponse(
+        submission_id=row["id"],
+        student_id=row["student_id"],
+        assessment_id=row["assessment_id"],
+        section_scores=[
+            SectionScoreResponse.model_validate(score)
+            for score in json.loads(row["section_scores"])
+        ],
+        overall_percentage=row["overall_percentage"],
+        passed=bool(row["passed"]),
     )
 
 
