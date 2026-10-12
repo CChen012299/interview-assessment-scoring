@@ -73,6 +73,21 @@ percentage, and, for each section of the assessment, how many students submitted
 passed and their average. Averages include only students who submitted and are `null` when
 nobody has. Returns 404 if the class or the assessment does not exist.
 
+### Get a class's summary
+
+```bash
+curl http://localhost:8000/classes/class-001/summary
+```
+
+A short triage view across every assessment. `failed` lists the students who failed an
+assessment, furthest from passing first, with only the sections they failed.
+`not_submitted` lists the students who have not submitted an assessment, most first.
+`sections_to_reteach` flags sections that fewer than half of the submitters passed, once
+at least half the class has submitted. `assessments` gives each assessment's submitted
+and passed counts and average. Students with nothing to follow up are only counted, in
+`passed_all_count`. Every assessment counts for every class, because there is no record
+of which assessments a class was given. Returns 404 if the class does not exist.
+
 ### List assessments
 
 ```bash
