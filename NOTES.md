@@ -204,8 +204,7 @@ then reads the summary back.
 - **A `UNIQUE (student_id, assessment_id)` index plus an upsert,** since a duplicate row
   could hide a resubmission.
 - **Submission history with timestamps and stored answers,** so a resubmission doesn't
-  erase the old score (as in the README example) and teachers get trends and
-  question-level insight.
+  erase the old score (as in the README example) and teachers get trends, allow for comparison across cohorts and question-level insight.
 - **An assignments table with due dates,** to tell "not submitted" from "never assigned",
   and "overdue" from "not yet due". It would also cut the summary's noise without changing
   its module: the route would pass in only the class's assessments.
@@ -225,4 +224,4 @@ The detailed plans and decision logs for the project can be found under docs/
 
 Its plans are intentionally broken up into small phases so that I can review each phase before implementation and before commit. For this project, I also made sure to have at most one phase per commit, so that if anything went wrong, it would be easy to revert.
 
-I believe that Claude can program (in most cases) better and faster than me, or in the areas that it cannot yet, it will be able to, soon. My job is not to do work that can be done better by a machine, but to reimagine what is needed by the humans in this process. My job is to understand the '*human*' aspect of our projects and to figure out how I can best leverage all the tools in my toolset, including AI, to better achieve that goal.
+I believe that Claude can program (in most cases) better and faster than me, or in the areas that it cannot yet, it will be able to, soon. My job is not to do work that can be done better by a machine, but to reimagine what is needed by the humans in this process. My job is to understand the '**human**' aspect of our projects and to figure out how I can best leverage all the tools in my toolset, including AI, to better achieve that goal.
