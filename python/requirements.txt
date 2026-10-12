@@ -2,5 +2,5 @@ fastapi
 uvicorn[standard]
 pydantic
 pytest
-httpx
+httpx2
 pytest-asyncio

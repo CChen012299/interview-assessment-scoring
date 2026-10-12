@@ -3,10 +3,15 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
+from src.class_results import build_student_results, summarize_class_results
+from src.class_summary import summarize_class
 from src.database import (
+    get_all_assessment_details,
     get_assessment_detail,
     get_assessment_with_sections,
     get_assessments,
+    get_class_submissions,
+    get_class_submissions_for_assessment,
     get_class_with_students,
     get_classes,
     get_submissions_for_student,
@@ -16,8 +21,10 @@ from src.database import (
 from src.models import (
     AssessmentDetailResponse,
     AssessmentSummary,
+    ClassAssessmentResultsResponse,
     ClassResponse,
     ClassSummary,
+    ClassSummaryResponse,
     SectionScoreResponse,
     SubmissionResponse,
     SubmitRequest,
@@ -92,6 +99,79 @@ def get_class(class_id: str) -> ClassResponse:
     if result is None:
         raise HTTPException(status_code=404, detail="Class not found")
     return result
+
+
+# The \f (form feed) in the docstring ends the description FastAPI shows on
+# /docs, so the Args/Returns/Raises sections below it stay out of the API docs.
+@app.get("/classes/{class_id}/assessments/{assessment_id}/results")
+def get_class_results(class_id: str, assessment_id: str) -> ClassAssessmentResultsResponse:
+    """Return each roster student's result on one assessment, plus a class summary.
+
+    Every student on the class roster is listed, including those who have not
+    submitted (``status`` is ``"not_submitted"`` and ``submission`` is null).
+    \f
+    Args:
+        class_id: Class whose roster to report on.
+        assessment_id: Assessment to report results for.
+
+    Returns:
+        Class and assessment details, a class-wide summary and one result per
+        roster student.
+
+    Raises:
+        HTTPException: 404 if the class does not exist, or if the assessment
+            does not exist. The class is checked first.
+    """
+    class_ = get_class_with_students(class_id, _DB_PATH)
+    if class_ is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    assessment = get_assessment_detail(assessment_id, _DB_PATH)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    submissions = get_class_submissions_for_assessment(class_id, assessment_id, _DB_PATH)
+    student_results = build_student_results(class_.students, submissions)
+
+    return ClassAssessmentResultsResponse(
+        class_id=class_.id,
+        class_name=class_.name,
+        teacher_name=class_.teacher_name,
+        assessment_id=assessment.id,
+        assessment_name=assessment.name,
+        summary=summarize_class_results(student_results, assessment.sections),
+        students=student_results,
+    )
+
+
+# \f in the docstring: see the note above get_class_results.
+@app.get("/classes/{class_id}/summary")
+def get_class_summary(class_id: str) -> ClassSummaryResponse:
+    """Return a class's at-a-glance summary across every assessment.
+
+    Lists only the students who need follow-up: those who failed an assessment
+    (with the sections they failed) and those who have not submitted one. Also
+    flags sections most of the class did not pass, and gives each assessment's
+    headline numbers. Every assessment counts for every class.
+    \f
+    Args:
+        class_id: Class to summarize.
+
+    Returns:
+        The class summary.
+
+    Raises:
+        HTTPException: 404 if the class does not exist.
+    """
+    class_ = get_class_with_students(class_id, _DB_PATH)
+    if class_ is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    return summarize_class(
+        class_,
+        get_all_assessment_details(_DB_PATH),
+        get_class_submissions(class_id, _DB_PATH),
+    )
 
 
 @app.get("/assessments")

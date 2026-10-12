@@ -20,6 +20,11 @@ docker compose run test
 
 Before you implement the scoring function, 8 tests pass and 8 fail. All 16 should pass once your implementation is correct.
 
+One provided test, `test_submit_returns_500_before_scoring_implemented`, checks behavior
+from before the scoring function existed and is expected to fail (see
+`../NOTES.md`). After changing code, add `--build` so the image picks up your
+changes: `docker compose run --rm --build test`.
+
 ## API reference
 
 ### Submit an assessment
@@ -54,6 +59,34 @@ curl http://localhost:8000/classes
 ```bash
 curl http://localhost:8000/classes/class-001
 ```
+
+### Get a class's results for an assessment
+
+```bash
+curl http://localhost:8000/classes/class-001/assessments/assess-001/results
+```
+
+Lists every student on the class roster with a `status` of `passed`, `failed` or
+`not_submitted`, and their `submission` (overall percentage and per-section scores), which
+is `null` if they have not submitted. A `summary` gives status counts, the average overall
+percentage, and, for each section of the assessment, how many students submitted, how many
+passed and their average. Averages include only students who submitted and are `null` when
+nobody has. Returns 404 if the class or the assessment does not exist.
+
+### Get a class's summary
+
+```bash
+curl http://localhost:8000/classes/class-001/summary
+```
+
+A short triage view across every assessment. `failed` lists the students who failed an
+assessment, furthest from passing first, with only the sections they failed.
+`not_submitted` lists the students who have not submitted an assessment, most first.
+`sections_to_reteach` flags sections that fewer than half of the submitters passed, once
+at least half the class has submitted. `assessments` gives each assessment's submitted
+and passed counts and average. Students with nothing to follow up are only counted, in
+`passed_all_count`. Every assessment counts for every class, because there is no record
+of which assessments a class was given. Returns 404 if the class does not exist.
 
 ### List assessments
 
