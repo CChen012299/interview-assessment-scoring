@@ -22,7 +22,7 @@ Before you implement the scoring function, 8 tests pass and 8 fail. All 16 shoul
 
 One provided test, `test_submit_returns_500_before_scoring_implemented`, checks behavior
 from before the scoring function existed and is expected to fail (see
-`../NOTES.md.template`). After changing code, add `--build` so the image picks up your
+`../NOTES.md`). After changing code, add `--build` so the image picks up your
 changes: `docker compose run --rm --build test`.
 
 ## API reference

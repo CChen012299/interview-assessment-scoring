@@ -1,6 +1,4 @@
 # Notes
-My first thought/approach to this was to have GET /classes/{class_id} return a detailed summary for that class, including "what's needed so a teacher can see each student's result for an assessment", but because one of the tests,
-test_get_class_returns_students_without_scores, asserts to make sure there are no "scores" or "submissions" in that endpoint, I opted for a different route.
 
 ## How the service works
 <!-- Describe the end-to-end flow in your own words: what happens from HTTP request to stored result -->
