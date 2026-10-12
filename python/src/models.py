@@ -199,3 +199,113 @@ class ClassAssessmentResultsResponse(BaseModel):
     assessment_name: str
     summary: ClassResultsSummary
     students: list[StudentResult]
+
+
+class FailedAssessment(BaseModel):
+    """An assessment a student failed, with the sections that failed.
+
+    Attributes:
+        id: Assessment identifier.
+        name: Assessment display name.
+        overall_percentage: The student's stored overall percentage (0.0 to 1.0).
+        failed_sections: Only the sections the student did not pass, in
+            assessment order. Empty when the overall score alone caused the fail.
+    """
+
+    id: str
+    name: str
+    overall_percentage: float
+    failed_sections: list[SectionScoreResponse]
+
+
+class StudentFailures(BaseModel):
+    """A roster student who failed at least one assessment.
+
+    Attributes:
+        id: Student identifier.
+        name: Student display name.
+        assessments: The assessments the student failed, in catalog order.
+    """
+
+    id: str
+    name: str
+    assessments: list[FailedAssessment]
+
+
+class StudentNotSubmitted(BaseModel):
+    """A roster student who has not submitted at least one assessment.
+
+    Attributes:
+        id: Student identifier.
+        name: Student display name.
+        assessments: The assessments the student has not submitted, in catalog
+            order.
+    """
+
+    id: str
+    name: str
+    assessments: list[AssessmentSummary]
+
+
+class SectionToReteach(BaseModel):
+    """A section most of the class did not pass, flagged for whole-class reteaching.
+
+    Attributes:
+        assessment: The assessment the section belongs to.
+        section: The class's results on the section.
+    """
+
+    assessment: AssessmentSummary
+    section: SectionResultSummary
+
+
+class AssessmentOverview(BaseModel):
+    """Headline numbers for one assessment in a class summary.
+
+    Attributes:
+        id: Assessment identifier.
+        name: Assessment display name.
+        submitted_count: Roster students with a submission.
+        passed_count: Students whose submission passed.
+        average_overall_percentage: Mean overall percentage across submitters,
+            or None when nobody has submitted.
+    """
+
+    id: str
+    name: str
+    submitted_count: int
+    passed_count: int
+    average_overall_percentage: Optional[float]
+
+
+class ClassSummaryResponse(BaseModel):
+    """Response for ``GET /classes/{class_id}/summary``.
+
+    A triage view across every assessment in the catalog: students with
+    nothing to follow up are counted, not listed. Not to be confused with
+    ``ClassSummary``, the id-and-name entry in the class list.
+
+    Attributes:
+        class_id: Class identifier.
+        class_name: Class display name.
+        teacher_name: Name of the class's teacher.
+        total_students: Students on the class roster.
+        passed_all_count: Roster students who passed every assessment. With no
+            assessments in the catalog, every student counts.
+        failed: Students who failed at least one assessment, furthest from
+            passing first.
+        not_submitted: Students who have not submitted at least one
+            assessment, most not submitted first.
+        sections_to_reteach: Sections to reteach to the whole class.
+        assessments: Headline numbers for every assessment, in catalog order.
+    """
+
+    class_id: str
+    class_name: str
+    teacher_name: str
+    total_students: int
+    passed_all_count: int
+    failed: list[StudentFailures]
+    not_submitted: list[StudentNotSubmitted]
+    sections_to_reteach: list[SectionToReteach]
+    assessments: list[AssessmentOverview]
