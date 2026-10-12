@@ -13,9 +13,10 @@ walkthrough.
 assistant), so it can feed NOTES.md directly. Edit it freely. Text in **[brackets]** marks
 a reason only you can give; it was left blank rather than invented.
 
-**Current state, in one line:** designed and planned, not yet built. The design is a
-triage endpoint backed by a pure module that reuses the class-results logic, with two bulk
-queries and 13 lean tests. The plan was verified in memory, but not yet run in Docker.
+**Current state, in one line:** built and verified in Docker on 2026-10-12, one commit per
+phase (`b1c0dc1` to `33828ec`). The design is a triage endpoint backed by a pure module
+that reuses the class-results logic, with two bulk queries and 13 lean tests. Every Verify
+step in the plan matched; section 4 has the results.
 
 ---
 
@@ -134,6 +135,15 @@ are caught (S20).
 
 **Step 6: documents before code.** I asked for this decision log alongside the plan, and
 for the session to end with both documents in `docs/` and no code written yet.
+
+**Step 7: running the plan.** Before starting, I asked Claude to explain Phase 1 in depth:
+what it does, why it is needed, and why it was built that way. Claude then ran the plan
+phase by phase in Docker, and I reviewed and committed each phase before the next. Every
+Verify step matched on the first run. Claude added a few checks the plan didn't ask for,
+such as real pydantic serialization of a fully nested response and the route's `/docs`
+description. It also flagged two places where the plan claimed more than the code
+delivers (S9 and S18). Finally, Claude drafted the class summary parts of `NOTES.md` from
+this log, for me to edit.
 
 ---
 
@@ -351,14 +361,23 @@ for the session to end with both documents in `docs/` and no code written yet.
     worth a helper.
   - `get_all_assessment_details` groups sections by assessment in Python, rather than
     querying once per assessment.
+- **What the shared SQL really protects** (noted during execution). The roster JOIN is
+  only an efficiency filter (S20, D13), so drift in the JOIN alone wouldn't change any
+  response. The stronger reason to share the SQL is its column list: both queries feed
+  `_row_to_submission`, which reads columns by name, so a column added to one copy and
+  not the other would fail at runtime. The `ORDER BY rowid` explanation also keeps one
+  home.
 - **[Your reason.]**
 
 **S18. Each assessment is computed once.**
 
 - A private, frozen dataclass, `_AssessmentResults`, holds each assessment with its
   submissions and its class summary. Every list builder reads it, instead of recomputing.
-- `frozen=True` makes the attributes read-only, so one helper can't quietly change data
-  that another helper reads.
+- `frozen=True` stops a helper from reassigning an attribute, such as replacing
+  `submissions` with another dict. It is shallow, though: the dict and the pydantic models
+  inside it can still be changed in place. No helper changes them, so `frozen` guards
+  against accidents rather than guaranteeing read-only data. (Corrected during execution;
+  the first draft said the data was read-only.)
 - It is private because it is only a hand-off between helpers, not part of any interface.
 
 **S19. Code standards.**
@@ -423,17 +442,20 @@ read any class. A production version must check that the caller teaches the clas
 - The endpoint gets a short entry in `python/README.md`, the API reference reviewers read
   (D29).
 - The plan and this log live in `docs/`, beside their class-results counterparts.
-- `NOTES.md` is mine to update.
+- `NOTES.md` is mine. At my request, Claude drafted its class summary parts from this
+  log, for me to edit.
 
-**S23. Verification without running the plan.** The plan was written in plan mode, so it
-couldn't be applied to a scratch copy and run in Docker. Claude verified it in memory
-instead, as section 4 records. Real pydantic validation, FastAPI serialization and flake8
-have not run yet. The plan's Verify steps are the real check, and any mismatch stops
-execution.
+**S23. Verification before and during execution.** The plan was written in plan mode, so
+it couldn't be applied to a scratch copy and run in Docker. Claude verified it in memory
+instead, and left real pydantic validation, FastAPI serialization and flake8 to the plan's
+Verify steps, with any mismatch stopping execution. When the plan was executed, every
+Verify step matched, as section 4 records.
 
 ---
 
 ## 4. Verification summary
+
+**Before execution,** in memory:
 
 | Check | Result |
 |---|---|
@@ -443,7 +465,33 @@ execution.
 | The Phase 1 refactor | The rebuilt SQL is character-for-character identical |
 | Line length and imports | No new line over 92 characters; no unused imports; the 3 pre-existing E501 (line too long) errors unchanged |
 | Mutation testing | 6 of 6 injected bugs caught, after one fix to the unit test data |
-| Docker, real pydantic and FastAPI, flake8 | **Not yet run:** the plan's Verify steps cover these |
+
+**During execution,** in Docker on 2026-10-12. Each phase was committed only after its
+checks passed.
+
+| Phase | Check | Result |
+|---|---|---|
+| 0 | Baseline tests | `1 failed, 31 passed`; only the stale test fails |
+| 1 | Rebuilt SQL against the old SQL, then the tests | `sql-unchanged`; `1 failed, 31 passed` |
+| 2 | Bulk queries against a fresh seed, then the tests | All three expected lines; tests unchanged |
+| 3 | `ClassSummaryResponse` field order, then the tests | As planned; tests unchanged |
+| 4 | Room 12C through the real queries and the module, then the tests | Both expected lines; tests unchanged |
+| 5 | The new unit tests | `1 failed, 38 passed` |
+| 6 | The route in process, for Room 12B and an unknown class | `200 ['student-007', 'student-006', 'student-004'] 404`; `1 failed, 38 passed` |
+| 7 | The new API tests | `1 failed, 44 passed` |
+| 8 | flake8 | The new and changed files are clean; `database.py` shows only its 3 pre-existing E501 errors |
+| 8 | Smoke test against a running server | Skipped: the API container was already running, so it was left alone |
+| 10 | Final run | `1 failed, 44 passed`; only the stale test fails |
+
+Checks added beyond the plan:
+- A fully nested `ClassSummaryResponse` validated and serialized with real pydantic. Fields
+  came out in declaration order, and an empty average serialized as `null`.
+- The route's OpenAPI description (what `/docs` shows) stops at `\f`, and its 200 response
+  points to the `ClassSummaryResponse` schema.
+- Every changed file kept its line endings, and no new line is over 92 characters.
+
+**Not re-run in Docker:** the six injected bugs above. They were checked in memory only,
+with stand-ins for pydantic and FastAPI.
 
 ---
 
@@ -493,3 +541,8 @@ execution.
   - the four decisions I made from Claude's options
   - what verification caught: a test that couldn't see a wrong sort order
   - Fill in the **[bracketed]** reasons before using it.
+- **Status:** Claude has drafted these parts of `NOTES.md` from this log: a "Class summary
+  feature" section, five tradeoff bullets, two "with more time" items and a "Class
+  summary" paragraph under "Working with AI". Where this log has a **[bracketed]** reason,
+  the draft uses the trade-off reasoning recorded here instead, so check it against my
+  own reasons.
