@@ -168,6 +168,38 @@ def get_class_submissions_for_assessment(
     return {row["student_id"]: _row_to_submission(row) for row in rows}
 
 
+def get_class_submissions(
+    class_id: str, db_path: str | Path = _DB_PATH
+) -> dict[str, dict[str, SubmissionResponse]]:
+    """Fetch the stored submissions of a class's students for every assessment.
+
+    The all-assessments counterpart of
+    :func:`get_class_submissions_for_assessment`: one query, however many
+    assessments exist. Only students on the class roster are included.
+
+    Args:
+        class_id: Class whose roster to use.
+        db_path: SQLite database file.
+
+    Returns:
+        Submissions keyed by assessment id, then by student id. An assessment
+        nobody in the class has submitted has no key. Empty if nobody in the
+        class has submitted anything (or the class does not exist).
+    """
+    with closing(_connect(db_path)) as conn:
+        rows = conn.execute(
+            _CLASS_SUBMISSIONS_SQL + " ORDER BY sub.rowid", (class_id,)
+        ).fetchall()
+
+    submissions: dict[str, dict[str, SubmissionResponse]] = {}
+    for row in rows:
+        # setdefault returns the assessment's inner dict, creating it the first
+        # time that assessment appears
+        by_student_id = submissions.setdefault(row["assessment_id"], {})
+        by_student_id[row["student_id"]] = _row_to_submission(row)
+    return submissions
+
+
 def _row_to_submission(row: sqlite3.Row) -> SubmissionResponse:
     """Convert a ``submissions`` row into a SubmissionResponse.
 
@@ -255,3 +287,47 @@ def get_assessment_detail(
             for s in section_rows
         ],
     )
+
+
+def get_all_assessment_details(
+    db_path: str | Path = _DB_PATH,
+) -> list[AssessmentDetailResponse]:
+    """Fetch every assessment with its sections, in two queries.
+
+    The whole-catalog counterpart of :func:`get_assessment_detail`: two
+    queries however many assessments exist, instead of one per assessment.
+
+    Args:
+        db_path: SQLite database file.
+
+    Returns:
+        Every assessment ordered by id, each with its sections ordered by id
+        (the orders :func:`get_assessments` and :func:`get_assessment_detail`
+        use). An assessment without sections has an empty list. Empty if there
+        are no assessments.
+    """
+    with closing(_connect(db_path)) as conn:
+        assessment_rows = conn.execute(
+            "SELECT id, name FROM assessments ORDER BY id"
+        ).fetchall()
+        section_rows = conn.execute(
+            "SELECT id, assessment_id, name, weight FROM sections"
+            " ORDER BY assessment_id, id"
+        ).fetchall()
+
+    # Group the sections by assessment in Python instead of querying once per
+    # assessment
+    sections_by_assessment_id: dict[str, list[SectionSummary]] = {}
+    for row in section_rows:
+        sections_by_assessment_id.setdefault(row["assessment_id"], []).append(
+            SectionSummary(id=row["id"], name=row["name"], weight=row["weight"])
+        )
+
+    return [
+        AssessmentDetailResponse(
+            id=row["id"],
+            name=row["name"],
+            sections=sections_by_assessment_id.get(row["id"], []),
+        )
+        for row in assessment_rows
+    ]
