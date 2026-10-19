@@ -3,10 +3,12 @@ from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 
+from src.class_results import build_class_assessment_results
 from src.database import (
     get_assessment_detail,
     get_assessment_with_sections,
     get_assessments,
+    get_class_submissions_for_assessment,
     get_class_with_students,
     get_classes,
     get_submissions_for_student,
@@ -16,6 +18,7 @@ from src.database import (
 from src.models import (
     AssessmentDetailResponse,
     AssessmentSummary,
+    ClassAssessmentResultsResponse,
     ClassResponse,
     ClassSummary,
     SectionScoreResponse,
@@ -92,6 +95,20 @@ def get_class(class_id: str) -> ClassResponse:
     if result is None:
         raise HTTPException(status_code=404, detail="Class not found")
     return result
+
+
+@app.get("/classes/{class_id}/assessments/{assessment_id}/results")
+def get_class_results(class_id: str, assessment_id: str) -> ClassAssessmentResultsResponse:
+    klass = get_class_with_students(class_id, _DB_PATH)
+    if klass is None:
+        raise HTTPException(status_code=404, detail="Class not found")
+
+    assessment = get_assessment_detail(assessment_id, _DB_PATH)
+    if assessment is None:
+        raise HTTPException(status_code=404, detail="Assessment not found")
+
+    submissions = get_class_submissions_for_assessment(class_id, assessment_id, _DB_PATH)
+    return build_class_assessment_results(klass, assessment, submissions)
 
 
 @app.get("/assessments")

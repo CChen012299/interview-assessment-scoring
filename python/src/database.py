@@ -110,6 +110,20 @@ def save_submission(
             return submission_id
 
 
+def _row_to_submission(row: sqlite3.Row) -> SubmissionResponse:
+    return SubmissionResponse(
+        submission_id=row["id"],
+        student_id=row["student_id"],
+        assessment_id=row["assessment_id"],
+        section_scores=[
+            SectionScoreResponse.model_validate(score)
+            for score in json.loads(row["section_scores"])
+        ],
+        overall_percentage=row["overall_percentage"],
+        passed=bool(row["passed"]),
+    )
+
+
 def get_submissions_for_student(
     student_id: str, db_path: str | Path = _DB_PATH
 ) -> SubmissionResponseList:
@@ -120,22 +134,24 @@ def get_submissions_for_student(
             (student_id,),
         ).fetchall()
 
-    return SubmissionResponseList(
-        responses=[
-            SubmissionResponse(
-                submission_id=row["id"],
-                student_id=row["student_id"],
-                assessment_id=row["assessment_id"],
-                section_scores=[
-                    SectionScoreResponse.model_validate(score)
-                    for score in json.loads(row["section_scores"])
-                ],
-                overall_percentage=row["overall_percentage"],
-                passed=bool(row["passed"]),
-            )
-            for row in rows
-        ]
-    )
+    return SubmissionResponseList(responses=[_row_to_submission(row) for row in rows])
+
+
+def get_class_submissions_for_assessment(
+    class_id: str, assessment_id: str, db_path: str | Path = _DB_PATH
+) -> dict[str, SubmissionResponse]:
+    """This class's submissions for one assessment, keyed by student_id."""
+    with closing(_connect(db_path)) as conn:
+        rows = conn.execute(
+            "SELECT sub.id, sub.student_id, sub.assessment_id, sub.section_scores,"
+            " sub.overall_percentage, sub.passed"
+            " FROM submissions sub"
+            " JOIN class_students cs ON cs.student_id = sub.student_id"
+            " WHERE cs.class_id = ? AND sub.assessment_id = ?",
+            (class_id, assessment_id),
+        ).fetchall()
+
+    return {row["student_id"]: _row_to_submission(row) for row in rows}
 
 
 def get_classes(db_path: str | Path = _DB_PATH) -> ClassList:

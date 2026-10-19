@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel
 
 
@@ -86,3 +88,39 @@ class AssessmentWithSections(BaseModel):
     id: str
     name: str
     sections: list[ScoringSection]
+
+
+StudentResultStatus = Literal["passed", "not_passed", "not_submitted"]
+
+
+class StudentAssessmentResult(BaseModel):
+    student_id: str
+    student_name: str
+    status: StudentResultStatus
+    overall_percentage: float | None = None
+    section_scores: list[SectionScoreResponse] = []
+
+
+class SectionResultSummary(BaseModel):
+    id: str
+    name: str
+    average_percentage: float | None
+    not_passed_student_ids: list[str]
+
+
+class ClassResultsSummary(BaseModel):
+    passed: int
+    not_passed: int
+    not_submitted: int
+    average_overall_percentage: float | None
+    sections: list[SectionResultSummary]
+
+
+class ClassAssessmentResultsResponse(BaseModel):
+    class_id: str
+    class_name: str
+    teacher_name: str
+    assessment_id: str
+    assessment_name: str
+    summary: ClassResultsSummary
+    students: list[StudentAssessmentResult]

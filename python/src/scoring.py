@@ -1,4 +1,19 @@
+import unicodedata
+
 from src.config import MASTERY_THRESHOLD
+
+# Float sums can land just under the true value: 80% everywhere with weights
+# 0.1 / 0.7 / 0.2 sums to 0.7999999999999999.
+_FLOAT_TOLERANCE = 1e-9
+
+
+def _meets_threshold(percentage: float) -> bool:
+    return percentage >= MASTERY_THRESHOLD - _FLOAT_TOLERANCE
+
+
+def _normalize(answer: str) -> str:
+    # NFC so "café" typed as one character or as e + combining accent compares equal.
+    return unicodedata.normalize("NFC", answer).casefold()
 
 
 def calculate_score(
@@ -39,8 +54,50 @@ def calculate_score(
         - An empty submission is valid and scores 0 in all sections
         - Section weights are guaranteed to sum to 1.0
 
-    TODO: Implement this function.
-    The tests in tests/test_scoring.py define the expected behavior.
-    Run: docker compose run test
+    Raises:
+        ValueError: if a section has no questions (a broken assessment).
     """
-    raise NotImplementedError
+    normalized_answers = {
+        question_id: _normalize(answer)
+        for question_id, answer in submitted_answers.items()
+    }
+
+    section_scores = []
+    overall_percentage = 0.0
+
+    for section in sections:
+        questions = section["questions"]
+        points_possible = len(questions)
+        if points_possible == 0:
+            raise ValueError(f"Section {section['id']!r} has no questions")
+
+        # Walk the section's questions, not the answers: unanswered ones score 0
+        # and answers to other questions are ignored.
+        points_earned = sum(
+            1
+            for question_id, correct_answer in questions.items()
+            if normalized_answers.get(question_id) == _normalize(correct_answer)
+        )
+        percentage = points_earned / points_possible
+
+        section_scores.append(
+            {
+                "id": section["id"],
+                "name": section["name"],
+                "points_earned": points_earned,
+                "points_possible": points_possible,
+                "percentage": percentage,
+                "passed": _meets_threshold(percentage),
+            }
+        )
+        overall_percentage += percentage * section["weight"]
+
+    passed = _meets_threshold(overall_percentage) and all(
+        score["passed"] for score in section_scores
+    )
+
+    return {
+        "section_scores": section_scores,
+        "overall_percentage": overall_percentage,
+        "passed": passed,
+    }
