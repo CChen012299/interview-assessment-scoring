@@ -5,9 +5,13 @@ services:
       - "8000:8000"
     volumes:
       - ./data:/app/data
+      # Mount code so uvicorn --reload picks up edits without a rebuild.
+      - ./src:/app/src
 
   test:
     build: .
     command: pytest tests/ -v
     volumes:
       - ./data:/app/data
+      - ./src:/app/src
+      - ./tests:/app/tests

@@ -55,6 +55,17 @@ curl http://localhost:8000/classes
 curl http://localhost:8000/classes/class-001
 ```
 
+### Get a class's results for an assessment
+
+```bash
+curl http://localhost:8000/classes/class-001/assessments/assess-001/results
+```
+
+Returns every student on the roster with a `status` of `passed`, `not_passed`, or
+`not_submitted`, their overall percentage and section scores, and a class `summary`
+with a count per status and, for each section, the class average and which students
+did not pass it. Returns 404 if the class or the assessment does not exist.
+
 ### List assessments
 
 ```bash
