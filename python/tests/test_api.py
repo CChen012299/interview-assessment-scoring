@@ -1,3 +1,6 @@
+import pytest
+
+
 def test_submit_returns_422_on_missing_student_id(test_client):
     response = test_client.post(
         "/assessments/assess-001/submit",
@@ -14,12 +17,25 @@ def test_submit_returns_404_on_unknown_assessment(test_client):
     assert response.status_code == 404
 
 
-def test_submit_returns_500_before_scoring_implemented(test_client):
+def test_submit_scores_submission_end_to_end(test_client):
+    # The README's example request.
     response = test_client.post(
         "/assessments/assess-001/submit",
-        json={"student_id": "student-001", "answers": {"q-001": "author"}},
+        json={
+            "student_id": "student-001",
+            "answers": {"q-001": "author", "q-002": "setting", "q-004": "main idea"},
+        },
     )
-    assert response.status_code == 500
+    assert response.status_code == 200
+    data = response.json()
+    sections = {s["id"]: s for s in data["section_scores"]}
+    # Vocabulary 2/3, Comprehension 1/4 -> (2/3)*0.4 + (1/4)*0.6 = 0.4167
+    assert sections["sec-001"]["points_earned"] == 2
+    assert sections["sec-001"]["points_possible"] == 3
+    assert sections["sec-002"]["points_earned"] == 1
+    assert sections["sec-002"]["points_possible"] == 4
+    assert data["overall_percentage"] == pytest.approx(0.4167, abs=0.001)
+    assert data["passed"] is False
 
 
 def test_get_scores_returns_empty_list_for_unknown_student(test_client):

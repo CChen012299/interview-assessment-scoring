@@ -71,3 +71,47 @@ def test_empty_submission_scores_zero_everywhere():
     for section in result["section_scores"]:
         assert section["points_earned"] == 0
         assert section["percentage"] == pytest.approx(0.0)
+
+
+def test_comparison_is_case_insensitive():
+    answers = {"q1": "AUTHOR", "q2": "Setting", "q3": "pLoT",
+               "q4": "Main Idea", "q5": "INFERENCE", "q6": "evidence"}
+    assert calculate_score(answers, SECTIONS)["passed"] is True
+
+    # Same visible text typed two ways: "é" as one character vs "e" + accent.
+    sections = [{"id": "s", "name": "S", "weight": 1.0,
+                 "questions": {"q1": "caf\u00e9", "q2": "stra\u00dfe"}}]
+    result = calculate_score({"q1": "CAFE\u0301", "q2": "STRASSE"}, sections)
+    assert result["section_scores"][0]["points_earned"] == 2
+
+
+def test_answers_for_unknown_questions_are_ignored():
+    answers = {"q1": "author", "q2": "setting", "q3": "plot",
+               "q4": "main idea", "q5": "inference", "q6": "evidence",
+               "q-not-on-test": "anything", "q99": "author"}
+    result = calculate_score(answers, SECTIONS)
+    assert result["passed"] is True
+    for section in result["section_scores"]:
+        assert section["points_earned"] == section["points_possible"]
+
+
+def test_exactly_at_threshold_passes_despite_float_rounding():
+    # 4/5 = 80% in every section. With these weights a naive weighted sum is
+    # 0.7999999999999999, which would wrongly fail a student who hit mastery.
+    def section(sec_id, weight):
+        questions = {f"{sec_id}-q{i}": "x" for i in range(5)}
+        return {"id": sec_id, "name": sec_id, "weight": weight, "questions": questions}
+
+    sections = [section("a", 0.1), section("b", 0.7), section("c", 0.2)]
+    answers = {f"{s['id']}-q{i}": "x" for s in sections for i in range(4)}
+
+    result = calculate_score(answers, sections)
+    assert result["overall_percentage"] == pytest.approx(MASTERY_THRESHOLD)
+    assert all(s["passed"] for s in result["section_scores"])
+    assert result["passed"] is True
+
+
+def test_section_with_no_questions_raises():
+    sections = [{"id": "empty", "name": "Empty", "weight": 1.0, "questions": {}}]
+    with pytest.raises(ValueError):
+        calculate_score({}, sections)
